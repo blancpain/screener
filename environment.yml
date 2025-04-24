@@ -1,0 +1,12 @@
+name: stocks
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pandas
+  - openpyxl
+  - lxml
+  - yfinance
+  - pynvim
+  - ca-certificates
+  - openssl
