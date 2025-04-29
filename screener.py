@@ -76,13 +76,16 @@ if missing_tickers:
 close_prices = pd.DataFrame(
     {ticker: data[ticker]["Close"] for ticker in universe_cleaned}
 )
+high_prices = pd.DataFrame(
+    {ticker: data[ticker]["High"] for ticker in universe_cleaned}
+)
 volume_dict = {ticker: data[(ticker, "Volume")] for ticker in universe_cleaned}
 avg_vol_50_dict = {
     ticker: vol.rolling(50).mean() for ticker, vol in volume_dict.items()
 }
 
-
-rolling_high = close_prices.rolling(lookback_days, min_periods=1).max()
+# ---------- FIXED ROLLING HIGH (Using Intraday Highs) ----------
+rolling_high = high_prices.rolling(lookback_days, min_periods=1).max()
 
 # ---------- USE TODAY'S DATA (AFTER MARKET CLOSE) ----------
 current_close = close_prices.iloc[-1]
