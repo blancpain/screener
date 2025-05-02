@@ -9,6 +9,11 @@ import yfinance as yf
 import datetime
 import os
 
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
 # ---------- BREAKOUT CRITERIA ----------
 soft_breakout_pct = 0.005
 proximity_threshold = 0.05
@@ -22,39 +27,113 @@ lookback_days = 252
 print("\n=== Universe Options ===")
 print("0 - SPY (S&P 500)")
 print("1 - S&P1500")
-print("2 - Russell 1000 (CSV required)")
+print("2 - Russell 1000")
 print("3 - Russell 3000 (CSV required)")
 print("4 - TSX Composite")
 
-choice = input("Select Universe [0/1/2/3/4]: ")
+choice = int(input("Select Universe [0/1/2/3/4]: "))
 
-if choice == "0":
+if choice == 0:
     universe_name = "SPY"
     df = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
     universe = df["Symbol"].tolist()
-elif choice == "1":
+
+elif choice == 1:
     universe_name = "S&P1500"
     df1 = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
     df2 = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_400_companies")[0]
     df3 = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_600_companies")[0]
     universe = df1["Symbol"].tolist() + df2["Symbol"].tolist() + df3["Symbol"].tolist()
-elif choice == "2":
+
+elif choice == 2:
     universe_name = "Russell 1000"
-    universe = pd.read_csv("russell1000.csv")["Symbol"].tolist()
-elif choice == "3":
+    driver = webdriver.Chrome()
+    driver.get("https://en.wikipedia.org/wiki/Russell_1000_Index")
+    try:
+        rows_xpath = "//table[4]//tbody/tr"
+        rows = WebDriverWait(driver, 10).until(
+            EC.presence_of_all_elements_located((By.XPATH, rows_xpath))
+        )
+        universe = []
+        for row in rows:
+            cells = row.find_elements(By.TAG_NAME, "td")
+            if cells and len(cells) > 1:
+                ticker = cells[1].text.strip()
+                if ticker:
+                    universe.append(ticker)
+        print(f"Extracted {len(universe)} tickers: {universe}")
+    except Exception as e:
+        print(f"Error during scraping: {e}")
+    finally:
+        driver.quit()
+
+elif choice == 3:
     universe_name = "Russell 3000"
-    universe = pd.read_csv("russell3000.csv")["Symbol"].tolist()
-elif choice == "4":
+    try:
+        universe = pd.read_csv("russell3000.csv")["Symbol"].tolist()
+    except FileNotFoundError:
+        print("Error: CSV file not found.")
+        exit()
+    except Exception as e:
+        print(f"Error processing CSV file: {e}")
+        exit()
+
+elif choice == 4:
     universe_name = "TSX Composite"
-    df = pd.read_html("https://en.wikipedia.org/wiki/S%26P/TSX_Composite_Index")[0]
-    universe = df["Symbol"].tolist()
+    driver = webdriver.Chrome()
+    driver.get(
+        "https://topforeignstocks.com/indices/the-components-of-the-sptsx-composite-index/"
+    )
+    try:
+        rows_xpath = '//*[@id="tablepress-5032"]/tbody/tr'
+        rows = WebDriverWait(driver, 20).until(
+            EC.presence_of_all_elements_located((By.XPATH, rows_xpath))
+        )
+
+        universe = []
+        for i, row in enumerate(rows):
+            cells = row.find_elements(By.TAG_NAME, "td")
+            if not cells or len(cells) <= 1:
+                print(f"Row {i + 1} skipped: Not enough cells")
+                continue
+
+            ticker = cells[2].text.strip()
+            if (
+                ticker
+            ):  # Relaxed validation to allow valid tickers with special characters
+                universe.append(ticker)
+            else:
+                print(f"Row {i + 1} skipped: Invalid ticker {ticker}")
+
+        # Append '.TO' for all tickers if necessary
+        universe = [
+            ticker + ".TO" if not ticker.endswith(".TO") else ticker
+            for ticker in universe
+        ]
+        print(f"Extracted {len(universe)} tickers: {universe}")
+
+    except Exception as e:
+        print(f"Error during scraping TSX Composite tickers: {e}")
+
+    finally:
+        driver.quit()
+
 else:
-    raise ValueError("Invalid Choice")
+    valid_choices = [0, 1, 2, 3, 4]
+    raise ValueError(f"Invalid Choice: {choice}. Please select from {valid_choices}.")
 
-# Replace any dots in tickers (for TSX and some U.S. tickers)
-universe = [ticker.replace(".", "-") for ticker in universe]
+if choice in [0, 1, 2, 3]:
+    universe = [ticker.replace(".", "-") for ticker in universe]
+elif choice == 4:
+    # Process tickers only if there is more than one dot, otherwise leave them unchanged
+    universe = [
+        ticker.replace(".", "-", 1) if ticker.count(".") > 1 else ticker
+        for ticker in universe
+    ]
+    universe = [ticker for ticker in universe if ticker != "CWB.TO"]
+
+
 print(f"\n Universe Loaded: {universe_name} ({len(universe)} tickers)")
-
 
 # ---------- DOWNLOAD DATA ----------
 end_date = datetime.datetime.today()
